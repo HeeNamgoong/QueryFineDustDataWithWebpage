@@ -98,3 +98,111 @@ server.listen(3000, (err) => {
   }
 });
 ```
+
+* devices.js
+```javascript
+var express = require("express"); // express 모듈 불러오기
+var router = express.Router(); // express 라우터 모듈 불러오기
+const mqtt = require("mqtt"); // mqtt 모듈 불러오기
+const Sensors = require("../models/sensors"); //'models'폴더의 'sensors' 파일 불러오기
+// MQTT Server 접속
+const client = mqtt.connect("mqtt://192.168.232.84"); // 라즈베리파이 url 입력 (서버 주소)
+// 웹에서 rest-full 요청받는 부분(POST)
+router.post("/led", function (req, res, next) {
+  res.set("Content-Type", "text/json"); // 콘텐츠 유형 설정
+  if (req.body.flag == "on") {
+    // MQTT->led : 1
+    client.publish("led_test", "1"); // led_test 토픽으로 publish, led : on
+    res.send(JSON.stringify({ led: "on" })); // 값이나 객체를 JSON 문자열로 변환 후 데이터를 보냄
+  } else { 
+    client.publish("led_test", "2"); // led_test 토픽으로 publish, led : off
+    res.send(JSON.stringify({ led: "off" })); // 값이나 객체를 JSON 문자열로 변환 후 데이터를 보냄
+  }
+});
+module.exports = router; // router 객체를 참조
+```
+
+* MQTT.html
+
+```HTML
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Insert title here</title>
+    <script type="text/javascript" src="/socket.io/socket.io.js"></script><!--socket.io 모듈 사용-->
+    <script src="http://code.jquery.com/jquery-3.3.1.min.js"></script> <!--jquery 사용-->
+    <script type="text/javascript"> <!--기본 언어 설정-->
+      var socket = null; // socket 선언, 초기화
+      $;
+      var timer = null; // timer 선언, 초기화
+      $(document).ready(function () {  // 문서가 준비되면 객체의 로드가 완료되면 함수 실행
+        socket = io.connect(); // 3000port
+        // Node.js보낸 데이터를 수신하는 부분
+        socket.on("socket_evt_mqtt", function (data) { // socket_evt_mqtt 이벤트 등록
+          data = JSON.parse(data); //  JSON 문자열의 구문을 분석, 저장
+          console.log(data);
+          $(".mqttlist").html( // mqttlist 요소의 내용을 아래의 정보들로 바꾸기
+            "<li>" +
+              " tmp: " +
+              data.tmp +
+              "°C" +
+              " hum: " +
+              data.hum +
+              "%" +
+              " pm1: " +
+              data.pm1 +
+              " pm2.5: " +
+              data.pm2 +
+              " pm10: " +
+              data.pm10 +
+              "</li>"
+          );
+        });
+        if (timer == null) {
+          timer = window.setInterval("timer1()", 1000); // // 1초에 한번씩 요청하기위해 timer1 함수 실행
+        }
+      });
+      function timer1() { // timer1 함수
+        socket.emit("socket_evt_mqtt", JSON.stringify({})); // 서버쪽에서 socket_evt_mqtt 이벤트 발생시킴
+        console.log("---------");
+      }
+      function ledOnOff(value) { // ledOnOff 함수
+        // {"led":1}, {"led":2}
+        socket.emit("socket_evt_led", JSON.stringify({ led: Number(value) }));
+      }
+      function ajaxledOnOff(value) {
+        if (value == "1") var value = "on";
+        else if (value == "2") var value = "off";
+        $.ajax({
+          url: "http://192.168.232.141:3000/devices/led", // local url
+          type: "post",
+          data: { flag: value },
+          success: ledStatus, // ledStatus 함수
+          error: function () {
+            alert("error"); // "error" 알림창 띄우기
+          },
+        });
+      }
+      function ledStatus(obj) {
+        $("#led").html("<font color='red'>" + obj.led + "</font> 되었습니다.");
+      }
+    </script>
+  </head>
+  <body>
+    <h2>socket 이용한 센서 모니터링 서비스</h2>
+    <div id="msg">
+      <div id="mqtt_logs">
+        <ul class="mqttlist"></ul>
+      </div>
+      <h2>socket 통신 방식(LED제어)</h2>
+      <button onclick="ledOnOff(1)">LED_ON</button>
+      <button onclick="ledOnOff(2)">LED_OFF</button>
+      <h2>RESTfull Service 통신 방식(LED제어)</h2>
+      <button onclick="ajaxledOnOff(1)">LED_ON</button>
+      <button onclick="ajaxledOnOff(2)">LED_OFF</button>
+      <div id="led">LED STATUS</div>
+    </div>
+  </body>
+</html>
+```
